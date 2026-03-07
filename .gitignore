@@ -1,0 +1,13 @@
+# Credentials and secrets — never commit
+.env
+.env.local
+.env.*.local
+*.pem
+aws_env_lines.txt
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.env
