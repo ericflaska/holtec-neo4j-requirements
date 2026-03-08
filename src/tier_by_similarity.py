@@ -36,7 +36,6 @@ def get_tier_exemplars(
     client: Any = None,
     seed: int = 42,
 ) -> dict[str, list[int]]:
-    """Run Nova on a random sample to get labeled exemplars per tier. Returns tier -> list of indices."""
     from src.nova_tier import assign_tiers_to_requirements_with_fallback, get_bedrock_client
     n = len(requirements)
     if n == 0:
@@ -98,7 +97,6 @@ def assign_tiers_by_similarity_with_fallback(
     client: Any = None,
     default_tier: Tier = "system",
 ) -> list[tuple[Entry, Tier]]:
-    """Get exemplars via Nova on a sample, then assign all requirements by cosine similarity to tier centroids."""
     if not requirements or not embeddings or len(embeddings) != len(requirements):
         return [(e, default_tier) for e in requirements]
     try:

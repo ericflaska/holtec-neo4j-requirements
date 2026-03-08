@@ -24,6 +24,14 @@ def get_bedrock_client():
     return _get()
 
 
+def embed_text(text: str, client: Any = None, model_id: str | None = None, dimensions: int = 1024) -> list[float]:
+    from config import TITAN_EMBED_MODEL_ID
+    if client is None:
+        client = get_bedrock_client()
+    model_id = model_id or TITAN_EMBED_MODEL_ID
+    return _invoke_titan(client, model_id, text or "", dimensions=dimensions)
+
+
 def embed_entries(
     entries: list[Entry],
     client: Any = None,

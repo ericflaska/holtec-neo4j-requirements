@@ -17,6 +17,11 @@ def _entry_id(doc_title: str, page: int, section: str, text_preview: str) -> str
     return hashlib.sha256(f"{doc_title}|{page}|{section}|{text_preview[:200]}".encode()).hexdigest()[:16]
 
 
+def _entry_id_with_index(doc_title: str, page: int, section: str, text_preview: str, index: int) -> str:
+    base = _entry_id(doc_title, page, section, text_preview)
+    return f"{base}_{index}"
+
+
 def load_requirements_into_neo4j(result: ExtractionResult, driver=None, document_id=None) -> int:
     requirements = result.requirements_only()
     if not requirements:
@@ -64,8 +69,7 @@ def load_tiered_requirements_into_neo4j(
         tx.run("MERGE (c:Component {id: 'component', name: 'Component'})")
         count = 0
         for idx, (e, tier) in enumerate(requirements_with_tiers):
-            req_id = _entry_id(e.doc_title, e.page_number, e.section_title, e.text)
-            full_id = f"{doc_id}_{req_id}"
+            full_id = f"{doc_id}_{_entry_id_with_index(e.doc_title, e.page_number, e.section_title, e.text, idx)}"
             if use_embeddings and idx < len(embeddings):
                 tx.run(
                     """
@@ -92,12 +96,23 @@ def load_tiered_requirements_into_neo4j(
         return session.execute_write(_run)
 
 
-def requirement_full_id(doc_id: str, e: Entry) -> str:
+def requirement_full_id(doc_id: str, e: Entry, index: int | None = None) -> str:
     safe_doc = (doc_id or "extraction").replace(" ", "_")[:64]
+    if index is not None:
+        base = _entry_id_with_index(e.doc_title, e.page_number, e.section_title, e.text, index)
+        return f"{safe_doc}_{base}"
     return f"{safe_doc}_{_entry_id(e.doc_title, e.page_number, e.section_title, e.text)}"
 
 
 BATCH_SIZE_TRACE_EDGES = 2000
+
+
+def delete_trace_edges(driver=None) -> int:
+    driver = driver or get_driver()
+    with driver.session() as session:
+        result = session.run("MATCH ()-[r:TRACES_TO]->() DELETE r")
+        summary = result.consume()
+        return getattr(summary.counters, "relationships_deleted", 0) or 0
 
 
 def create_trace_edges(
@@ -145,23 +160,23 @@ ADJACENT_TIERS = {("plant", "system"), ("system", "plant"), ("system", "componen
 def filter_trace_pairs_to_adjacent_tiers(
     requirements_with_tiers: list[tuple[Entry, Tier]], pairs: list[tuple[int, int]]
 ) -> list[tuple[int, int]]:
-    """Keep only pairs where the two requirements are on adjacent tiers: plant-system or system-component."""
     if not requirements_with_tiers or not pairs:
         return []
-    tiers = [t for _, t in requirements_with_tiers]
+    tiers = [(t or "").strip().lower() for _, t in requirements_with_tiers]
     n = len(tiers)
     out = []
     for i, j in pairs:
         if i < 0 or i >= n or j < 0 or j >= n:
             continue
-        key = (tiers[i].lower(), tiers[j].lower())
-        if key in ADJACENT_TIERS:
+        ti, tj = tiers[i], tiers[j]
+        if ti == tj:
+            continue
+        if (ti, tj) in ADJACENT_TIERS:
             out.append((i, j))
     return out
 
 
 def tier_based_trace_pairs(requirements_with_tiers: list[tuple[Entry, Tier]]) -> list[tuple[int, int]]:
-    """Pairs so that system links only to plant, component only to system (no same-tier or plant-component)."""
     plant_idx = [i for i, (_, t) in enumerate(requirements_with_tiers) if t == "plant"]
     system_idx = [i for i, (_, t) in enumerate(requirements_with_tiers) if t == "system"]
     component_idx = [i for i, (_, t) in enumerate(requirements_with_tiers) if t == "component"]

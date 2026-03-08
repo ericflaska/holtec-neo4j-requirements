@@ -11,3 +11,8 @@ __pycache__/
 .venv/
 venv/
 .env
+
+# Large generated data (embeddings, checkpoints)
+data/
+requirements_checkpoint.json
+requirements_checkpoint_embed_tier.json
